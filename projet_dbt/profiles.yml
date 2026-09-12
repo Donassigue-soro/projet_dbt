@@ -1,1 +1,7 @@
-version 
+projet_dbt:
+  outputs:
+    dev:
+      type: duckdb
+      path: 'olist.duckdb' # DuckDB va créer ce fichier localement pour stocker la base
+      threads: 4
+  target: dev
