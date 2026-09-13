@@ -1,0 +1,161 @@
+version: 2
+
+models:
+  - name: stg_olist__customers
+    description: >
+      Une ligne par commande passée (grain = customer_id, identique à la source brute).
+      customer_unique_id identifie la vraie personne physique : un même client peut
+      apparaître plusieurs fois avec des customer_id différents s'il a commandé plusieurs fois
+      (découvert en EDA : 96096 personnes uniques pour 99441 lignes).
+    columns:
+      - name: customer_id
+        description: Clé technique, une par commande (PAS un identifiant client stable)
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_unique_id
+        description: Identifiant stable de la personne physique, à utiliser pour toute analyse de fidélité/récurrence
+        tests:
+          - not_null
+
+      - name: customer_state
+        description: État brésilien du client (2 lettres)
+
+  - name: stg_olist__order_items
+    description: >
+      Une ligne par article commandé (grain = order_id + order_item_id).
+      Une commande peut contenir plusieurs articles (jusqu'à 21 observés en EDA).
+    columns:
+      - name: order_id
+        description: Commande associée à cet article
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+
+      - name: order_item_id
+        description: Numéro de séquence de l'article dans la commande (PAS un ID unique global)
+        tests:
+          - not_null
+
+      - name: product_id
+        tests:
+          - not_null
+
+      - name: seller_id
+        tests:
+          - not_null
+
+      - name: price
+        description: Prix unitaire de l'article
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_id
+  - name: stg_olist__payments
+    description: >
+      Une ligne par paiement (grain = order_id + payment_sequential).
+      Une commande peut être payée en plusieurs fois (jusqu'à 29 paiements observés en EDA,
+      souvent des paiements fractionnés type carte de crédit ou vouchers).
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__orders')
+                field: order_id
+
+      - name: payment_sequential
+        description: Numéro de séquence du paiement dans la commande (PAS un ID unique global)
+        tests:
+          - not_null
+
+      - name: payment_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'not_defined']
+
+      - name: payment_value
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - order_id
+              - payment_sequential
+  - name: stg_olist__reviews
+    description: >
+      Une ligne par couple (review_id, order_id). review_id n'est PAS unique seul :
+      un même avis peut être associé à plusieurs commandes du même client
+      (relation many-to-many découverte en EDA). 768 commandes n'ont aucune review
+      (comportement normal côté client).
+    columns:
+      - name: review_id
+        tests:
+          - not_null
+
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__orders')
+                field: order_id
+
+      - name: review_score
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - review_id
+              - order_id
+
+  - name: stg_olist__products
+    description: >
+      Une ligne par produit. La catégorie est traduite en anglais quand possible
+      (2 catégories sans traduction trouvée en EDA : conservées en portugais via COALESCE).
+      Certains produits (610 sur ~33k) ont des attributs manquants (catégorie, poids, description).
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - not_null
+
+      - name: product_category_name
+        description: Catégorie traduite en anglais si disponible, sinon nom portugais original
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: product_weight_g
+        tests:
+          - not_null:
+              config:
+                severity: warn
+  - name: stg_olist__sellers
+    description: Une ligne par vendeur, grain = seller_id.
+    columns:
+      - name: seller_id
+        tests:
+          - unique
+          - not_null
+
+      - name: seller_state
+        description: État brésilien du vendeur (2 lettres)
