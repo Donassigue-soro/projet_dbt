@@ -159,3 +159,17 @@ models:
 
       - name: seller_state
         description: État brésilien du vendeur (2 lettres)
+  - name: stg_olist__geolocation
+    description: >
+      Référentiel géographique brésilien par zip code. Grain = un point GPS distinct
+      (plusieurs points possibles par zip_code_prefix, ~52 en moyenne).
+      Dédupliqué des doublons exacts trouvés en EDA (1 000 163 lignes brutes → 738 332 distinctes).
+      Pas encore agrégé à 1 ligne par zip code : ce sera fait dans un modèle mart si besoin
+      de jointure directe avec dim_customers / dim_sellers.
+    columns:
+      - name: zip_code_prefix
+        tests:
+          - not_null
+
+      - name: state
+        description: État brésilien (2 lettres)

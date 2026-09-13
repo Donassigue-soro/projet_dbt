@@ -158,3 +158,21 @@ WHERE order_delivered_customer_date < order_purchase_timestamp
    OR order_approved_at < order_purchase_timestamp
    OR order_delivered_customer_date < order_approved_at
 GROUP BY order_status;
+
+-- Volumétrie et doublons potentiels
+SELECT COUNT(*) AS total_lignes,
+       COUNT(DISTINCT geolocation_zip_code_prefix) AS zip_codes_distincts
+FROM olist_geolocation_dataset;
+
+-- Combien de lignes par zip code (en moyenne, on s'attend à plusieurs points GPS par zip)
+SELECT geolocation_zip_code_prefix, COUNT(*) AS nb_points
+FROM olist_geolocation_dataset
+GROUP BY geolocation_zip_code_prefix
+ORDER BY nb_points DESC
+LIMIT 10;
+
+-- Vérifier s'il y a des lignes 100% identiques (vrais doublons à dédupliquer)
+SELECT COUNT(*) AS total,
+       COUNT(DISTINCT (geolocation_zip_code_prefix, geolocation_lat, geolocation_lng, 
+                       geolocation_city, geolocation_state)) AS distinctes
+FROM olist_geolocation_dataset;
