@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "olist.duckdb")
 
-# Palette : encre, jade (couleur principale), or (mise en avant), gris-bleu
+
 INK, JADE, GOLD, MIST, GRID = "#1B2A41", "#0E7C66", "#E9B44C", "#9AA8B8", "#E6EAF0"
 
 st.set_page_config(page_title="Olist — Tableau de bord", page_icon="📦", layout="wide")
@@ -17,6 +17,7 @@ st.set_page_config(page_title="Olist — Tableau de bord", page_icon="📦", lay
 st.markdown(
     f"""
     <style>
+    
     @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap');
     html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; }}
     h1 {{ font-weight: 800; letter-spacing: -0.02em; }}
@@ -25,11 +26,13 @@ st.markdown(
         background: #fff; border: 1px solid {GRID}; border-left: 4px solid {JADE};
         border-radius: 6px; padding: 14px 18px;
     }}
+    
     [data-testid="stMetricLabel"] {{ color: {MIST}; }}
     [data-testid="stMetricValue"] {{ font-weight: 800; font-size: 1.9rem; }}
     [data-testid="stMetricValue"] > div {{ overflow: visible; text-overflow: clip; white-space: nowrap; }}    section[data-testid="stSidebar"] {{ border-right: 1px solid {GRID}; background: #fff; }}
     section[data-testid="stSidebar"] [role="radiogroup"] label {{ padding: 4px 0; }}
     section[data-testid="stSidebar"] a {{ color: {JADE}; font-weight: 600; }}
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -49,6 +52,26 @@ CATEGORIES_FR = {
     "office_furniture": "Mobilier de bureau", "stationery": "Papeterie",
     "computers": "Ordinateurs", "pet_shop": "Animalerie",
     "fashion_bags_accessories": "Sacs & accessoires", "electronics": "Électronique",
+    "christmas_supplies": "Articles de Noël",
+    "fashion_underwear_beach": "Lingerie & plage",
+    "audio": "Audio",
+    "construction_tools_lights": "Outillage : éclairage",
+    "construction_tools_construction": "Outillage : chantier",
+    "books_technical": "Livres techniques",
+    "books_general_interest": "Livres généralistes",
+    "home_confort": "Confort maison",
+    "home_construction": "Bricolage & maison",
+    "food": "Alimentation",
+    "food_drink": "Alimentation & boissons",
+    "furniture_living_room": "Salon",
+    "furniture_bedroom": "Chambre",
+    "small_appliances": "Petit électroménager",
+    "home_appliances": "Électroménager",
+    "musical_instruments": "Instruments de musique",
+    "fashion_shoes": "Chaussures",
+    "luggage_accessories": "Bagages",
+    "consoles_games": "Consoles & jeux",
+    "drinks": "Boissons",
 }
 STATUTS_FR = {
     "delivered": "Livrée", "shipped": "Expédiée", "canceled": "Annulée",
@@ -132,7 +155,7 @@ PAGES = {
 choix = st.sidebar.radio("Section", list(PAGES.values()), label_visibility="collapsed")
 page = next(k for k, v in PAGES.items() if v == choix)
 
-# ---- Filtres (pages basées sur fct_orders) ----
+# ---- Filtres----
 DEB, FIN = dt.date(2017, 1, 1), dt.date(2018, 8, 31)
 d_debut, d_fin, etats = DEB, FIN, []
 
@@ -154,7 +177,7 @@ if page in ("Vue d'ensemble", "Fidélisation client"):
 
 
 def filtres(alias: str = "") -> str:
-    """Condition SQL (période + états) à insérer après un WHERE sur fct_orders."""
+    """Condition SQL """
     p = f"{alias}." if alias else ""
     cond = (f"{p}order_purchased_at >= '{d_debut}' "
             f"AND {p}order_purchased_at < '{d_fin + dt.timedelta(days=1)}'")
@@ -181,7 +204,7 @@ st.sidebar.caption("Données publiques Olist, commandes de 2016 à 2018. Montant
 st.sidebar.markdown("[Code source sur GitHub](https://github.com/Donassigue-soro/projet_dbt)")
 
 # ============================================================
-# PAGE 1 — VUE D'ENSEMBLE
+# VUE D'ENSEMBLE
 # ============================================================
 
 if page == "Vue d'ensemble":
@@ -207,7 +230,7 @@ if page == "Vue d'ensemble":
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Commandes", fmt_int(kpi["nb_commandes"]))
     c2.metric("Revenu total", fmt_money(kpi["revenu_total"]))
-    c3.metric("Panier moyen", f"{kpi['panier_moyen']:.2f} R$".replace(".", ","))
+    c3.metric("Panier moyen", f"{kpi['panier_moyen']:.0f} R$")
     pct = kpi["pct_retard"]
     c4.metric("Livraisons en retard", "n.d." if pd.isna(pct) else f"{pct:.1f} %".replace(".", ","))
     st.caption("Commandes annulées ou indisponibles exclues.")
@@ -250,7 +273,7 @@ if page == "Vue d'ensemble":
             column_config={"Revenu (R$)": st.column_config.NumberColumn(format="%.0f")})
 
 # ============================================================
-# PAGE 2 — FIDÉLISATION CLIENT
+# FIDÉLISATION CLIENT
 # ============================================================
 
 elif page == "Fidélisation client":
@@ -311,7 +334,7 @@ elif page == "Fidélisation client":
     st.caption("Ce graphique suit le filtre d'état, pas la période.")
 
 # ============================================================
-# PAGE 3 — PERFORMANCE PRODUIT
+# PERFORMANCE PRODUIT
 # ============================================================
 
 elif page == "Performance produit":
@@ -332,28 +355,25 @@ elif page == "Performance produit":
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        d = run_query("""
-            SELECT COUNT(*) AS n,
-                   ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM dim_products), 2) AS pct
-            FROM dim_products WHERE nb_times_sold = 0
-        """).iloc[0]
-        st.metric("Produits jamais vendus", fmt_int(d["n"]))
-        st.metric("Part du catalogue", f"{d['pct']:.1f} %".replace(".", ","))
+        t = run_query("SELECT SUM(total_revenue) AS total, COUNT(*) AS n FROM dim_products").iloc[0]
+        top3 = cats.tail(3)["revenu_total"].sum()
+        st.metric("Produits au catalogue", fmt_int(t["n"]))
+        st.metric("Poids des 3 premières catégories", f"{100 * top3 / t['total']:.0f} %")
     with c2:
-        st.markdown("**Top 10 produits par revenu**")
         tp = run_query("""
-            SELECT product_category_name, nb_times_sold, total_revenue
+            SELECT product_id, product_category_name, nb_times_sold, total_revenue
             FROM dim_products ORDER BY total_revenue DESC LIMIT 10
         """)
+        tp["product_id"] = tp["product_id"].str[:8] + "…"
         tp["product_category_name"] = cat_fr(tp["product_category_name"])
         st.dataframe(
-            tp.rename(columns={"product_category_name": "Catégorie", "nb_times_sold": "Ventes",
-                               "total_revenue": "Revenu (R$)"}),
+            tp.rename(columns={"product_id": "Produit", "product_category_name": "Catégorie",
+                               "nb_times_sold": "Ventes", "total_revenue": "Revenu (R$)"}),
             width='stretch', hide_index=True,
-            column_config={"Revenu (R$)": st.column_config.NumberColumn(format="%.0f")})
+            column_config={"Revenu (R$)": st.column_config.NumberColumn(format="%d")})
 
 # ============================================================
-# PAGE 4 — LOGISTIQUE & SATISFACTION
+# LOGISTIQUE & SATISFACTION
 # ============================================================
 
 elif page == "Logistique & satisfaction":
@@ -371,18 +391,26 @@ elif page == "Logistique & satisfaction":
         WHERE foi.order_status = 'delivered' AND dp.product_category_name IS NOT NULL
         GROUP BY dp.product_category_name
         HAVING COUNT(DISTINCT foi.order_id) > 100
-        ORDER BY pct_retard DESC LIMIT 15
+        ORDER BY pct_retard DESC
     """)
     bc["Catégorie"] = cat_fr(bc["product_category_name"])
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("**Taux de retard par catégorie (%)**")
-        b = bc.sort_values("pct_retard")
+        st.markdown("**Les 15 catégories avec le plus de retard (%)**")
+        b = bc.head(15).sort_values("pct_retard")
         show(go.Figure(go.Bar(x=b["pct_retard"], y=b["Catégorie"], orientation="h",
                               marker_color=GOLD)), height=460)
     with c2:
-        st.markdown("**Plus il y a de retard, plus la note baisse**")
+        st.markdown("**Top 10 produits par revenu**")
+        r = bc["pct_retard"].corr(bc["note_moyenne"])
+        if r < -0.3:
+            titre = "Les catégories les plus en retard sont moins bien notées"
+        elif r > 0.3:
+            titre = "Le retard ne fait pas baisser la note moyenne des catégories"
+        else:
+            titre = "Retard et note : un lien faible entre catégories"
+        st.markdown(f"**{titre}**")
         f = go.Figure(go.Scatter(
             x=bc["pct_retard"], y=bc["note_moyenne"], mode="markers", text=bc["Catégorie"],
             marker=dict(size=bc["nb_commandes"], sizemode="area",
@@ -393,6 +421,7 @@ elif page == "Logistique & satisfaction":
         f.update_yaxes(title_text="Note moyenne (sur 5)")
         show(f, height=460)
         st.caption("Taille des bulles : nombre de commandes.")
+        st.caption(f"Corrélation entre retard et note : {r:.2f} (de -1 à 1).")
 
     st.markdown("### Notes de satisfaction")
     sc = run_query("""
@@ -404,13 +433,12 @@ elif page == "Logistique & satisfaction":
                           marker_color=[palette[int(s)] for s in sc["review_score"]])), height=320)
 
 # ============================================================
-# PAGE 5 — PERFORMANCE VENDEUR
+# PERFORMANCE VENDEUR
 # ============================================================
 
 elif page == "Performance vendeur":
     st.title("Performance vendeur")
 
-    st.markdown("### Les 10 vendeurs qui rapportent le plus")
     ts = run_query("""
         SELECT ds.seller_id, ds.seller_state, ds.nb_orders, ds.total_revenue,
                ROUND(100.0 * SUM(CASE WHEN foi.is_late_delivery THEN 1 ELSE 0 END)
@@ -422,15 +450,23 @@ elif page == "Performance vendeur":
         ORDER BY ds.total_revenue DESC LIMIT 10
     """)
     ts["seller_id"] = ts["seller_id"].str[:8] + "…"
+    etat_top = ts["seller_state"].mode()[0]
+    n_top = int((ts["seller_state"] == etat_top).sum())
+    st.markdown(f"### {n_top} des 10 meilleurs vendeurs sont basés dans l'État {etat_top}")
     st.dataframe(
         ts.rename(columns={"seller_id": "Vendeur", "seller_state": "État", "nb_orders": "Commandes",
                            "total_revenue": "Revenu (R$)", "pct_retard_livraison": "Retard (%)"}),
         width='stretch', hide_index=True,
-        column_config={"Revenu (R$)": st.column_config.NumberColumn(format="%.0f")})
+        column_config={
+            "Revenu (R$)": st.column_config.NumberColumn(format="%d"),
+            "Retard (%)": st.column_config.NumberColumn(format="%.1f"),
+        })
 
-    st.markdown("### Revenu par état du vendeur")
     bs = run_query("""
         SELECT seller_state, COUNT(*) AS nb_vendeurs, SUM(total_revenue) AS revenu_total
         FROM dim_sellers GROUP BY seller_state ORDER BY revenu_total DESC
     """)
+    
+    part_top = 100 * bs["revenu_total"].iloc[0] / bs["revenu_total"].sum()
+    st.markdown(f"### {bs['seller_state'].iloc[0]} concentre {part_top:.0f} % du revenu des vendeurs")
     show(go.Figure(go.Bar(x=bs["seller_state"], y=bs["revenu_total"], marker_color=JADE)))
