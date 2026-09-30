@@ -1,161 +1,130 @@
-# Projet dbt — Olist E-Commerce
+# Olist : pipeline de données et tableau de bord décisionnel
 
-Pipeline de transformation de données construit avec **dbt** et **DuckDB**, à partir du dataset public [Olist Brazilian E-Commerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
+De 9 fichiers CSV bruts à un tableau de bord interactif, avec des transformations versionnées, testées et documentées. Projet réalisé seul, de bout en bout, sur le jeu de données public **Olist Brazilian E-Commerce** (place de marché brésilienne, 2016-2018).
 
-Le projet part de 9 fichiers CSV bruts (seeds) et les transforme, via une couche de nettoyage (staging) puis une couche métier (marts), en tables prêtes pour l'analyse business.
+**Tableau de bord en ligne : https://olistdash.streamlit.app/**
+(si l'application est en veille, un clic sur le bouton de relance suffit)
 
----
+![Vue d'ensemble](images/dashbord.png)
 
-## Stack technique
+## Ce que le projet démontre
 
-- **dbt** (Data Build Tool) — orchestration des transformations SQL
-- **DuckDB** — moteur de base de données local (fichier `olist.duckdb`)
-- **Adapter** : `dbt-duckdb`
+- **Ingénierie de données** : chargement, nettoyage SQL et modélisation en couches (staging puis marts) avec dbt.
+- **Qualité des données** : 50 tests automatisés, dont des avertissements volontaires sur les défauts connus de la source.
+- **Esprit d'analyse** : les anomalies sont isolées et documentées, pas corrigées en silence.
+- **Restitution** : un tableau de bord lisible par un décideur non technique, avec filtres et titres qui énoncent le constat.
 
----
+## Résultats clés
 
-## Structure du projet
+| Constat | Valeur |
+|---|---|
+| Revenu total (hors commandes annulées ou indisponibles) | environ 15,7 M R$ |
+| Clients n'ayant commandé qu'une fois | 97 % |
+| Livraisons en retard | environ 8,1 % |
+| Catégorie qui rapporte le plus | Santé & beauté |
+| Part des 10 meilleurs vendeurs basés à São Paulo | 9 sur 10 |
 
-```
-projet_dbt/
-├── seeds/                          # CSV bruts sources
-│   ├── olist_customers_dataset.csv
-│   ├── olist_geolocation_dataset.csv
-│   ├── olist_order_items_dataset.csv
-│   ├── olist_order_payments_dataset.csv
-│   ├── olist_order_reviews_dataset.csv
-│   ├── olist_orders_dataset.csv
-│   ├── olist_products_dataset.csv
-│   ├── olist_sellers_dataset.csv
-│   └── product_category_name_translation.csv
-│
-├── models/
-│   ├── staging/
-│   │   └── olist/
-│   │       ├── stg_olist__customers.sql
-│   │       ├── stg_olist__geolocation.sql
-│   │       ├── stg_olist__order_items.sql
-│   │       ├── stg_olist__orders.sql
-│   │       ├── stg_olist__payments.sql
-│   │       ├── stg_olist__products.sql
-│   │       ├── stg_olist__reviews.sql
-│   │       ├── stg_olist__sellers.sql
-│   │       └── schema.yml           # tests + documentation staging
-│   │
-│   └── marts/
-│       └── core/
-│           ├── dim_customers.sql
-│           ├── dim_products.sql
-│           ├── dim_sellers.sql
-│           ├── fct_orders.sql
-│           ├── fct_order_items.sql
-│           └── schema.yml           # tests + documentation marts
-│
-├── analyses_business_marts.sql      # requêtes d'analyse business (hors pipeline dbt)
-├── profiles.yml
-├── dbt_project.yml
-└── olist.duckdb                     # base DuckDB générée localement
+## Architecture
+
+```mermaid
+flowchart LR
+    A[9 CSV bruts<br/>seeds] --> B[Staging<br/>8 modèles nettoyés]
+    B --> C[Marts<br/>3 dimensions, 2 faits]
+    C --> D[(DuckDB)]
+    D --> E[Tableau de bord<br/>Streamlit + Plotly]
+    B -. 50 tests dbt .-> C
 ```
 
----
+Stack : **SQL, dbt (dbt-duckdb), DuckDB, Python, Streamlit, Plotly**.
 
-## Installation et exécution
+### Choix de conception
 
-### 1. Charger les seeds en base
-
-```bash
-cd projet_dbt
-dbt seed
-```
-
-### 2. Construire l'ensemble du pipeline (modèles + tests)
-
-```bash
-dbt build
-```
-
-Ou étape par étape :
-
-```bash
-dbt run --select staging.olist
-dbt test --select staging.olist
-dbt run --select marts.core
-dbt test --select marts.core
-```
-
-### 3. Explorer les données directement en SQL
-
-```bash
-duckdb olist.duckdb
-```
-
-⚠️ **Ne jamais garder une session DuckDB CLI ouverte en parallèle d'une commande `dbt run`/`dbt test`** — DuckDB verrouille le fichier en écriture, ce qui bloque dbt (`Conflicting lock` error). Fermer la session (`.quit`) avant de relancer dbt.
-
-### 4. Générer la documentation dbt
-
-```bash
-dbt docs generate
-dbt docs serve
-```
-
----
+- **DuckDB** : moteur analytique embarqué, sans serveur à installer, adapté à ce volume ; le projet se relance en quelques commandes.
+- **Séparation staging et marts** : le staging ne fait que nettoyer et renommer ; la logique métier vit uniquement dans les marts.
+- **Anomalies signalées, pas effacées** : les 61 commandes livrées aux dates incohérentes portent un indicateur `has_date_anomaly`.
+- **Tableau de bord en lecture seule** : il ne peut pas entrer en conflit avec un `dbt build` lancé en parallèle.
 
 ## Modèle de données
 
-### Couche staging (`models/staging/olist/`)
+**Staging** (`models/staging/olist/`) : une table nettoyée par source.
 
-Une table par seed, nettoyée et renommée, sans logique métier. Chaque modèle documente les particularités réelles des données découvertes en EDA :
-
-| Modèle | Grain | Particularité clé |
+| Modèle | Grain | Particularité |
 |---|---|---|
-| `stg_olist__orders` | 1 commande | 61 commandes livrées avec incohérence de dates (flag `has_date_anomaly`) |
-| `stg_olist__customers` | 1 commande (côté client) | `customer_id` ≠ `customer_unique_id` : le premier est technique (1 par commande), le second identifie la vraie personne |
-| `stg_olist__order_items` | 1 article commandé | Clé logique composée : `order_id` + `order_item_id` |
-| `stg_olist__payments` | 1 paiement | Clé logique composée : `order_id` + `payment_sequential`. Les paiements à 0€ sont des vouchers légitimes |
-| `stg_olist__reviews` | 1 couple review/commande | Relation many-to-many : un `review_id` peut être associé à plusieurs `order_id` |
-| `stg_olist__products` | 1 produit | Catégorie traduite en anglais (fallback en portugais si non traduite) |
-| `stg_olist__sellers` | 1 vendeur | — |
-| `stg_olist__geolocation` | 1 point GPS | Dédupliqué des doublons exacts (1 000 163 lignes brutes → 738 332 distinctes) |
+| `stg_olist__orders` | 1 commande | 61 commandes livrées aux dates incohérentes, signalées par `has_date_anomaly` |
+| `stg_olist__customers` | 1 commande (côté client) | `customer_id` est technique (un par commande) ; `customer_unique_id` identifie la personne |
+| `stg_olist__order_items` | 1 article | clé composée `order_id` + `order_item_id` |
+| `stg_olist__payments` | 1 paiement | clé composée `order_id` + `payment_sequential` ; les paiements à 0 R$ sont des bons d'achat |
+| `stg_olist__reviews` | 1 couple avis/commande | un `review_id` peut concerner plusieurs commandes |
+| `stg_olist__products` | 1 produit | catégorie traduite, avec repli sur le portugais |
+| `stg_olist__sellers` | 1 vendeur | |
+| `stg_olist__geolocation` | 1 point GPS | 1 000 163 lignes brutes ramenées à 738 332 après suppression des doublons exacts |
 
-### Couche marts (`models/marts/core/`)
+**Marts** (`models/marts/core/`) : tables orientées analyse.
 
-Tables orientées analyse métier :
-
-| Modèle | Grain | Description |
+| Modèle | Grain | Contenu |
 |---|---|---|
-| `dim_customers` | 1 client (`customer_unique_id`) | Nombre de commandes, dates de 1ère/dernière commande, segment `one_time`/`returning` |
-| `dim_products` | 1 produit | Enrichi de statistiques de vente (nb ventes, revenu total) |
-| `dim_sellers` | 1 vendeur | Enrichi de statistiques de vente (nb articles/commandes vendus, revenu) |
-| `fct_orders` | 1 commande | Montants agrégés, délai de livraison, note de satisfaction moyenne |
-| `fct_order_items` | 1 article commandé | Grain fin pour croiser produit × vendeur × commande |
+| `dim_customers` | 1 client | nombre de commandes, première et dernière commande, segment `one_time` ou `returning` |
+| `dim_products` | 1 produit | quantités vendues, revenu |
+| `dim_sellers` | 1 vendeur | articles et commandes vendus, revenu |
+| `fct_orders` | 1 commande | montants, délai de livraison, retard, note moyenne |
+| `fct_order_items` | 1 article | croisement produit, vendeur et commande |
 
----
+## Qualité des données
 
-## Principales découvertes de l'EDA
+**50 tests dbt** : `unique`, `not_null`, `accepted_values`, `relationships` et `dbt_utils.unique_combination_of_columns`.
 
-- **~99 441 commandes**, **~96 096 clients uniques** (distinction `customer_id` / `customer_unique_id`)
-- **97 % des clients** n'ont commandé qu'une seule fois
-- **~8,11 %** des commandes livrées arrivent après la date estimée
-- **768 commandes** n'ont pas de review associée (comportemental, pas une anomalie de données)
-- **2 catégories de produits** (`pc_gamer`, `portateis_cozinha_e_preparadores_de_alimentos`) n'ont pas de traduction anglaise dans le référentiel
-- **61 commandes livrées** ont un horodatage incohérent (probable bug de saisie côté source, isolé et documenté plutôt que corrigé silencieusement)
+Dernière exécution de `dbt test` : **48 réussis, 2 avertissements, 0 erreur.**
 
----
+Les deux avertissements sont volontaires : ils signalent des défauts connus de la source sans bloquer le pipeline.
 
-## Tests de qualité
+- **610 produits sans catégorie** ;
+- **2 produits sans poids**.
 
-Le projet compte une cinquantaine de tests dbt génériques (`unique`, `not_null`, `accepted_values`, `relationships`, `dbt_utils.unique_combination_of_columns`), répartis sur les couches staging et marts. Les tests reflètent les règles métier réelles découvertes en EDA plutôt que des suppositions — par exemple, aucun test `unique` n'est posé sur une colonne qui se répète légitimement (`customer_unique_id`, `review_id`).
+Les tests traduisent les règles réelles des données. Aucun test d'unicité n'est posé sur des colonnes qui se répètent légitimement (`customer_unique_id` dans le staging, `review_id`). L'intégrité entre tables est vérifiée par des tests `relationships` (articles, paiements et avis rattachés à une commande existante ; commandes rattachées à un client).
 
----
+## Tableau de bord
 
-## Requêtes d'analyse business
+Cinq sections : vue d'ensemble, fidélisation client, produits, livraison et satisfaction, vendeurs. Les deux premières se filtrent par période et par État. Les montants sont en réais brésiliens (R$).
 
-Le fichier `analyses_business_marts.sql` (à la racine, hors du dossier `models/`) regroupe des requêtes prêtes à l'emploi sur les marts, organisées par thématique :
+![Fidélisation](images/fidelisation.png)
 
-1. Performance commerciale globale
-2. Fidélisation client
-3. Performance produit
-4. Performance et satisfaction logistique
-5. Performance vendeur
+## Lancer le projet
 
-Ce fichier est volontairement en SQL pur (pas de Jinja `{{ ref() }}`) : il est fait pour être exécuté directement dans le CLI DuckDB, pas pour être parsé par dbt.
+```bash
+git clone https://github.com/Donassigue-soro/projet_dbt.git
+cd projet_dbt/projet_dbt
+pip install -r requirements.txt
+
+dbt deps      # installe dbt_utils
+dbt seed      # charge les 9 CSV
+dbt build     # modèles + tests
+
+streamlit run dashboard_olist.py
+```
+
+Fermez le tableau de bord (et toute session DuckDB) avant de relancer dbt : DuckDB n'autorise qu'un seul processus en écriture.
+
+## Structure du dépôt
+
+```
+projet_dbt/
+├── seeds/                   CSV bruts
+├── models/
+│   ├── staging/olist/       8 modèles + schema.yml (tests et documentation)
+│   └── marts/core/          5 modèles + schema.yml
+├── analyses/                exploration SQL
+├── dashboard_olist.py       application Streamlit
+├── packages.yml             dépendances dbt (dbt_utils)
+└── dbt_project.yml
+```
+
+## Limites et pistes d'amélioration
+
+- ajouter des tests sur les règles métier : date de livraison postérieure à l'achat, montants non négatifs ;
+- ajouter un test de fraîcheur si la source devient alimentée en continu ;
+- publier la documentation dbt générée (`dbt docs generate`) ;
+- le tableau de bord lit un fichier DuckDB local : pour un usage en production, il faudrait un entrepôt partagé (BigQuery, Postgres) et un ordonnanceur.
+
+## Contact
+
+SORO Donassigué Mathieu · sorodonassigue491@gmail.com · https://www.linkedin.com/in/mathieu-soro/
