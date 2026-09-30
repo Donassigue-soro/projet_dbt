@@ -21,7 +21,8 @@ import streamlit as st
 # CONFIGURATION
 # ============================================================
 
-DB_PATH = "olist.duckdb"  # à adapter si le script est lancé depuis un autre dossier
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "olist.duckdb")
 
 st.set_page_config(
     page_title="Olist — Dashboard",
@@ -34,13 +35,30 @@ st.set_page_config(
 def get_connection():
     # read_only=True : permet de lire pendant qu'un `dbt build` tourne ailleurs,
     # sans jamais provoquer d'erreur de lock DuckDB.
-    return duckdb.connect(DB_PATH, read_only=True)
+    try:
+        return duckdb.connect(DB_PATH, read_only=True)
+    except Exception as e:
+        st.error(
+            f"Impossible de se connecter à `{DB_PATH}` en lecture seule.\n\n"
+            f"Cause probable : une session DuckDB CLI ou un `dbt build` est "
+            f"encore ouvert(e) et verrouille le fichier.\n\n"
+            f"Erreur DuckDB : {e}"
+        )
+        st.stop()
 
 
 @st.cache_data(ttl=600)
 def run_query(sql: str) -> pd.DataFrame:
     con = get_connection()
-    return con.execute(sql).df()
+    try:
+        df = con.execute(sql).df()
+    except Exception as e:
+        st.error(f"Échec de la requête SQL :\n\n```sql\n{sql}\n```\n\nErreur : {e}")
+        st.stop()
+    if df is None:
+        st.error("La requête n'a retourné aucun résultat exploitable (df=None).")
+        st.stop()
+    return df
 
 
 # ============================================================
