@@ -3,3 +3,7 @@ target/
 dbt_packages/
 logs/
 .env
+dev.duckdb
+**/dev.duckdb
+target/
+logs/
